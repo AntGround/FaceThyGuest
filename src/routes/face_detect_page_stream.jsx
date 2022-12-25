@@ -1,37 +1,56 @@
 import { useEffect, useRef, useState } from "react";
 import io from 'socket.io-client';
 import { Link, useNavigate } from "react-router-dom";
-import {Button} from "react-bootstrap"
+import {Button, Modal} from "react-bootstrap"
+import axios from "axios";
 
 const socket = io("http://127.0.0.1:5000");
 
 function FaceDetectPageStream() {
-  console.log("render")
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
   const [isCanvasRunning, setIsCanvasRunning] = useState(false);
-  const [imageHistory, setImageHistory] = useState([]);
+  const [isConnected, setIsConnected] = useState(socket.connected);
   const [unknownImageCount, setUnknownImageCount] = useState(0);
+  const [ready, setReady] = useState(false);
+  const [detectionReady, setDetectionReady] = useState(false);
+  const [showLog, setShowLog] = useState(true);
+  const [logs, setLogs] = useState([]);
+  const [imageHistory, setImageHistory] = useState([]);
+  const [taskIDs, setTaskIDs] = useState([]);
+  const [faceData, setFaceData] = useState({});
+  const [showModal, setShowModal] = useState(false);
+
   const canvasRef = useRef(null);
   const videoRef = useRef(null);
   const imgRef = useRef(null);
   const navigate = useNavigate();
-  const [isConnected, setIsConnected] = useState(socket.connected);
 
   useEffect(() => {
 
-    socket.on('connect', () => {
-      setIsConnected(true);
-    });
+      socket.on('connect', () => {
+        setIsConnected(true);
+      });
 
-    socket.on('disconnect', () => {
-      setIsConnected(false);
-    });
+      socket.on('disconnect', () => {
+        setIsConnected(false);
+      });
 
-    return () => {
-      socket.off('connect');
-      socket.off('disconnect');
+      axios.get("http://localhost:5000/clear_detection_dir")
+      .then((data) => {
+        const server_data = data.data
+        if(server_data.status === "yes")
+        {
+          setLogs([ ...logs, "DetectionPhase directory cleared" ])
+          setReady(true);
+        } else {
+          setLogs([ ...logs, "Error Clearing DetectionPhase directory" ])
+        }
+      })
 
-    };
+      return () => {
+        socket.off('connect');
+        socket.off('disconnect');
+      };
 
   }, []);
   
@@ -54,9 +73,23 @@ function FaceDetectPageStream() {
   }, []);
 
   useEffect(() => {
+    if(detectionReady && Object.keys(faceData).length)
+    {
+      const keys = Object.keys(faceData.udata);
+      if(keys.length === 1)
+        registerFace(keys[0])
+    }
+  }, [detectionReady, faceData])
+
+  useEffect(() => {
+
     socket.on("response_back", function (image) {
-      // const image_id = document.getElementById("image");
-      // image_id.src = image;
+
+      if( image.task_id !== ""){
+        const nextTaskIDs = [...taskIDs, image.task_id]
+        setTaskIDs(nextTaskIDs);
+      }
+
       if(image.faceData.length)
       {
         image.faceData.forEach( face => {
@@ -65,25 +98,49 @@ function FaceDetectPageStream() {
         });
         imageHistory.push(image)
       }
-      if(unknownImageCount > 50)
-        setIsCanvasRunning( false )
+
       imgRef.current.src = image.imageData
     });
+
+    socket.on("task_done", (data) => {
+      console.log(data);
+      const udata = data.udata;
+      const kdata = data.kdata;
+      const uface_ids = Object.keys(udata)
+      const kface_ids = Object.keys(kdata)
+      const hasFiveUnkownFace = uface_ids.every( key => udata[key].length >= 5)
+      if(hasFiveUnkownFace){
+        uface_ids.forEach( key => {
+          data.udata[key] = data.udata[key].slice(0, 5);
+        })
+        kface_ids.forEach( key => {
+          data.kdata[key] = data.kdata[key].slice(0, 5);
+        })
+        setFaceData(data);
+        setDetectionReady(true);
+        setIsCanvasRunning(false);
+        setShowModal(true);
+      }
+    })
+
     return () => {
       socket.off('response_back');
+      socket.off("task_done")
     };
+
   }, [unknownImageCount])
 
 
   useEffect(() => {
-
+    
     let timerID;
+
     if (isVideoLoaded && isCanvasRunning) 
-      timerID = setInterval( () => requestAnimationFrame(Animate), 300);
+      timerID = setInterval( () => requestAnimationFrame(Animate), 1000);
     
     return () => clearInterval(timerID)
 
-    }, [isCanvasRunning, isVideoLoaded]);
+  }, [isCanvasRunning, isVideoLoaded]);
 
   const Animate = async (e) => {
     const ctx = canvasRef.current.getContext("2d");
@@ -92,7 +149,10 @@ function FaceDetectPageStream() {
     socket.emit('image', imageData);
   };
 
-  console.log("render end")
+  const registerFace = (id) => {
+    const face_data = faceData.udata[id];
+    navigate("/register", {state:face_data})
+  }
   return (
     <div>
       <div className="container-fluid text-center">
@@ -125,11 +185,52 @@ function FaceDetectPageStream() {
               Register
             </Button>
           }
-          <Button variant="secondary" onClick={()=>setIsCanvasRunning(!isCanvasRunning)}>
+          <Button variant="secondary" onClick={()=>setIsCanvasRunning(!isCanvasRunning)} disabled={!ready}>
             Start Capture
           </Button>
         </div>
       </div>
+      {
+        showLog &&
+        <div>
+          <ul>
+            { logs.map( (log, i) => <li key={i}> {log} </li>) }
+          </ul>
+        </div>
+
+      }
+      <Modal size="lg" show={showModal} onHide={() => window.location.reload()} animation={false}>
+          <Modal.Header closeButton>
+            <Modal.Title>Something</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+          <div className='row'>
+            <div className="col">
+
+            </div>
+            <div className="col">
+            {
+              detectionReady &&
+              Object.keys(faceData.udata).map( (id, i) => 
+              <div  key={i}>
+                <Button variant="success" className="mr-3" onClick={() => registerFace(id)}>
+                  Register
+                </Button>
+                <div className="d-flex flex-row">
+                  {
+                    faceData.udata[id].map( (b64, j) => <img key={j} src={b64} width={100} height={100} alt="lol"/>)
+                  }
+                </div>
+              </div>)
+
+            }
+            </div>
+          </div>
+          </Modal.Body>
+          <Modal.Footer>
+
+          </Modal.Footer> 
+      </Modal>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import base64
 import os
 from app import app, socketio, db, cache
 from flask import request, jsonify
@@ -7,8 +8,19 @@ import app.FaceStuff as FaceStuff
 import cv2
 from flask_cors import cross_origin
 from deepface import DeepFace
+from os import listdir
+from os.path import join, isfile
+from collections import Counter
+from app import celery
+from celery.result import AsyncResult
+import requests
 
-
+@celery.task
+def get_something(url):
+    res = requests.get(url)
+    count = len(res.text)
+    requests.post("http://localhost:5000/task_status", json={"data":count})
+    return {"data":count}
 
 @socketio.on("image")
 def get_image(imageData):
@@ -17,16 +29,28 @@ def get_image(imageData):
     response = {
         "imageData" : "",
         "faceData" : [],
+        "task_id": "",
     }
 
     #convert base64 image to np.ndarray image
-    image_ndarray = utils.stringToRGB(imageData)   
+    image_ndarray = utils.stringToRGB(imageData)
+    orig = utils.stringToRGB(imageData)
+    secondary_dataset_path =  join(app.root_path, "FaceStuff", "DetectionPhase")
 
-    #get bounding box coordinates for all faces in the image
+    image_count = max([ int(f.split("_")[0][1:]) for f in listdir(secondary_dataset_path) if isfile(join(secondary_dataset_path, f)) ], default=0)
+
+    detection_phase_files = [ f for f in listdir(secondary_dataset_path) if isfile(join(secondary_dataset_path, f)) and f.startswith("u")]
+
+    print(image_count)
+    if (image_count % 20 == 0) and (image_count > 3):
+        print("inside")
+        task = FaceStuff.categorizeUnkown.delay(secondary_dataset_path)
+        response['task_id'] = task.id
+    # #get bounding box coordinates for all faces in the image
     faces = FaceStuff.detectFace(image_ndarray, 640, 480)
 
     #loop over each bounding box
-    for (x, y, w, h) in faces:
+    for face_count, (x, y, w, h) in enumerate(faces):
 
         #draw a rectangle in the image based on current bounding box cooredinates
         cv2.rectangle(image_ndarray, (x, y), ( x+w, y+h), (255,0,0), 2)
@@ -37,9 +61,19 @@ def get_image(imageData):
         #send cropped face to face recognizer and get guest id, which you can put into guest table to get more info
         face_name = FaceStuff.recognizeFace(face, detector_backend="ssd")
 
+        if face_name == "" or face_name.startswith("u"):
+            # FaceStuff.saveUnknown(orig[y-30:y+h+30, x-30:x+w+30], write_path=app.root_path, face_name=face_name)
+            # FaceStuff.saveUnknown(orig[y:y+h, x:x+w], write_path=app.root_path, face_name=face_name)
+            file_name = f"u{image_count+1}_{face_count+1}.jpg"
+            FaceStuff.saveImage(orig[y:y+h, x:x+w], secondary_dataset_path, file_name=file_name)
+        else:
+            file_name = f"k{image_count+1}_{face_count+1}_{face_name}.jpg"
+            FaceStuff.saveImage(orig[y:y+h, x:x+w], secondary_dataset_path, file_name=file_name)
         #since using making db calls for every guest id is expensive, we use a cached version of the db to get guest info
         face_data = cache.get(face_name)
+
         color =(0,0,0)
+
         if face_name == "":
             color =(0,0,255)
         else:
@@ -76,6 +110,46 @@ def get_image(imageData):
     #emit an event containing response data
     socketio.emit("response_back", response)
 
+
+# @app.route('/task_status/<task_id>', methods=['GET'])
+# def get_task_status(task_id):
+#     task = AsyncResult(task_id, backend=app.config['result_backend'])
+#     print("lllllllllllllllllllllllllllllll", task.ready)
+#     print("lOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO\n", task.info)
+#     return {
+#         'status': task.status,
+#         'info': str(task.info),
+#     }
+
+@app.route("/get_images", methods=['POST'])
+def get_images():
+    dataset_dir = app.config['secondary_dataset_path']
+    ufiles = request.json['udata']
+    kfiles = request.json['kdata'] if 'kdata' in request.json else []
+    response = { 'udata':{}, 'kdata':{} }
+    for ufile in ufiles:
+        path_to_ufile = join(dataset_dir, ufile)
+        with open(path_to_ufile, "rb") as file:
+            image_base64 = base64.b64encode(file.read())
+            response['udata'][ufile]=image_base64.decode("utf-8")
+    return response
+
+@app.route('/clear_detection_dir', methods=['GET'])
+def clear_detection_dir():
+    try:
+        dataset_dir = app.config['secondary_dataset_path']
+        for file in listdir(dataset_dir):
+            file_path = join(dataset_dir, file)
+            os.remove(file_path)
+        return {'status':'yes'}
+    except Exception as e:
+        print(e)
+        return {'status':'no'}
+
+@app.route('/task_status', methods=['POST'])
+def get_task_status():
+    socketio.emit("task_done", request.json)
+    return ""
 
 @app.route('/guest', methods=['POST','GET'])
 def add_guest():

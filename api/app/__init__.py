@@ -3,6 +3,8 @@ from flask_cors import CORS
 from flask_socketio import SocketIO
 from flask_sqlalchemy import SQLAlchemy
 from flask_caching import Cache
+from celery import Celery
+from os.path import join
 app = Flask(__name__)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:root@localhost:5432/flasksql'
@@ -12,7 +14,16 @@ app.config['SECRET_KEY'] = 'secret!'
 app.config['CACHE_TYPE'] = 'SimpleCache'
 app.config['CACHE_DEFAULT_TIMEOUT'] = 10000000000
 
+app.config['broker_url'] = 'redis://localhost:6379'
+app.config['result_backend'] = 'redis://localhost:6379'
+app.config['secondary_dataset_path'] = join(app.root_path, "FaceStuff", "DetectionPhase")
 
+celery = Celery(
+        app.name,
+        broker=app.config['broker_url'],
+        backend=app.config['result_backend'],
+        include=["app.FaceStuff.face_clustering"]
+    )
 db = SQLAlchemy(app, )
 CORS(app)
 cache = Cache(app)

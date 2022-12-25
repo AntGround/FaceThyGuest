@@ -3,8 +3,13 @@ from deepface.commons.functions import preprocess_face
 import cv2
 import numpy as np
 import os
+from os import listdir
+from os.path import join, isfile
 import ftfy
 import pytesseract
+import pickle
+from app.FaceStuff.face_clustering import categorizeUnkown
+from filelock import FileLock
 
 package_directory = os.path.dirname(os.path.abspath(__file__))
 
@@ -34,15 +39,66 @@ def detectFace(image:np.ndarray, width:int, height:int):
         ))
     return bbox
 
-def recognizeFace(face:np.ndarray, detector_backend="opencv"):
+def recognizeFace(face:np.ndarray or str, detector_backend="opencv"):
     dataset_dir = os.path.join(package_directory, "dataset")
-    recognition_result = DeepFace.find(face, db_path=dataset_dir, enforce_detection=False,model_name=model_name, detector_backend=detector_backend, silent=True, prog_bar=False)
+    recognition_result = DeepFace.find(face, db_path=dataset_dir, enforce_detection=False, model_name=model_name, detector_backend=detector_backend, silent=True, prog_bar=True)
     face_name_paths = list(map(os.path.basename, recognition_result.identity.to_list()))
     face_names = list(map(removeShit, face_name_paths))
+
     if(len(face_names)>0):
-        return str(face_names[0])
+        face_id = max(set(face_names), key=face_names.count)
+        return face_id
     else:
         return ""
+
+def saveImage(face:np.ndarray, path:str, file_name):
+    cv2.imwrite(join(path, file_name), face)
+
+def saveUnknown(face:np.ndarray, write_path, face_name):
+    dataset_dir = os.path.join(package_directory, "DetectionPhase")
+    uface_file_ids = [ f.split(".")[0][1:] for f in listdir(dataset_dir) if isfile(join(dataset_dir, f)) and f.startswith("u") ]
+
+    next_face_id = 0
+    next_face_count = 0
+    if uface_file_ids:
+        if face_name == "":
+            next_face_id = max(map(int, [x.split("_")[0] for x in uface_file_ids]), default=0) + 1
+        else:
+            next_face_id = int(face_name[1:])
+
+        next_face_count = max(map(int, [x.split("_")[1] for x in uface_file_ids if x.startswith(str(next_face_id))]), default=0) + 1
+
+        if next_face_count > 10:
+            return
+    filename = os.path.join(write_path, "FaceStuff", "DetectionPhase", f"u{next_face_id}_{next_face_count}.jpg")
+
+    # if next_face_id > 64 :
+    #     return 1
+
+    # representation = DeepFace.represent(face
+	# 					, model_name = model_name, model = recognition_model
+	# 					, enforce_detection = "True", detector_backend = "opencv"
+	# 					, align = "True"
+	# 					, normalization = "base"
+	# 					)
+
+    # writeToRepresentaion([filename, representation], path=os.path.join(write_path, "FaceStuff", "dataset", "representations_facenet.pkl"))
+    cv2.imwrite(filename, face)
+    # os.remove(os.path.join(write_path, "FaceStuff", "dataset", "representations_facenet.pkl"))
+
+def writeToRepresentaion(data, path):
+    objects = []
+    with (open(path, "rb")) as openfile:
+        while True:
+            try:
+                objects.append(pickle.load(openfile))
+            except EOFError:
+                break
+    objects[0].append(data)
+    print(len(objects[0]))
+    
+    with open(path, "wb") as file:
+        pickle.dump(objects[0], file)
 
 def get_text(img):
     cv2.resize(img, (0,0), fx=0.5, fy=0.5)
@@ -62,3 +118,4 @@ def get_text(img):
 
 def removeShit(string):
     return string.split("_")[0]
+

@@ -2,7 +2,7 @@ import axios from "axios";
 import { useFormik } from "formik";
 import { defineDriver, keys } from "localforage";
 import { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import UploadDocument from "../components/upload_document";
 import { Button, Form, Modal } from "react-bootstrap";
 import UploadDocumentLocal from "../components/upload_document_local";
@@ -15,6 +15,7 @@ export default function FaceRegistraionPage(){
     const [profileUrl, setProfileUrl] = useState("profile.png")
     const [profileFlag, setProfileFlag] = useState(false)
     const [documents, setDocuments] = useState([]);
+    const navigate = useNavigate();
     const formik = useFormik({
       initialValues: {
         guest_name: "",
@@ -38,6 +39,7 @@ export default function FaceRegistraionPage(){
         axios.post("http://localhost:5000/guest", req)
             .then(resp=>{
                 console.log(resp)
+                navigate("/app");
             })
             .catch(resp=>{
                 alert("failed")
@@ -52,28 +54,28 @@ export default function FaceRegistraionPage(){
             })
 
         const imageDataRaw = location.state;
-        const imageData = processData(imageDataRaw)
-        console.log(imageData)
-        let count = -1000;
-        const allfacedata = []
-        const unkownfacedata = []
-        imageData.forEach(ele => {
-            const parentImage = ele.imageData;
-            const localList = []
-            if(ele.faceData.length > 0){
-                ele.faceData.forEach( face => {
-                    if(face.name ==="" && count < 5){
-                        localList.push(face);
-                        unkownfacedata.push({faceB64:face.faceB64, selected:false});
-                        count+=1;
-                    }
-                });
-            };
-            allfacedata.push({parent:parentImage, localList:localList})
-        });
-        // console.log(allfacedata); 
-        setAllFaceData(allfacedata);
-        unkownfacedata.splice(0,15);
+        // const imageData = processData(imageDataRaw)
+        // console.log(imageData)
+        // let count = -1000;
+        // const allfacedata = []
+        // const unkownfacedata = []
+        // imageData.forEach(ele => {
+        //     const parentImage = ele.imageData;
+        //     const localList = []
+        //     if(ele.faceData.length > 0){
+        //         ele.faceData.forEach( face => {
+        //             if(face.name ==="" && count < 5){
+        //                 localList.push(face);
+        //                 unkownfacedata.push({faceB64:face.faceB64, selected:false});
+        //                 count+=1;
+        //             }
+        //         });
+        //     };
+        //     allfacedata.push({parent:parentImage, localList:localList})
+        // });
+        // // console.log(allfacedata); 
+        // setAllFaceData(allfacedata);
+        const unkownfacedata = imageDataRaw.map( x => ({faceB64:x, selected:false}))
         setWhoThat(unkownfacedata)
 
     }, []);
@@ -130,72 +132,72 @@ export default function FaceRegistraionPage(){
         <div className="container">
             <h1 className="display-1">Guest Registraction</h1>
             <hr/>
-            <div className="row mb-3">
-                <div className="col">
-                    <form onSubmit={formik.handleSubmit} className="mb-3">
-                        <div className="mb-3 rounded-circle">
-                            <img src={profileUrl} alt="profile url" width={100} height={100}/>
-                        </div>
-                        <div className="input-group mb-3">
-                            <span className="input-group-text" id="basic-addon1">Name</span>
-                            <input type="text" className="form-control" name="guest_name" value={formik.values.guest_name} onChange={formik.handleChange} placeholder="Name" aria-label="Name" aria-describedby="basic-addon1"/>
-                        </div>
-                        <div className="input-group mb-3">
-                            <select className="form-select" aria-label="Default select example" name="membership_id" value={formik.values.membership_id} onChange={formik.handleChange}>
-                                {membershipOptionComponents}
-                                <option value='-1'>No Club</option>
-                            </select>
-                        </div>
-                        <div className="input-group mb-3">
-                            <span className="input-group-text" id="basic-addon1">ID Number</span>
-                            <input type="text" className="form-control" name="id_card" value={formik.values.id_card} onChange={formik.handleChange} placeholder="ID" aria-label="ID" aria-describedby="basic-addon1"/>
-                        </div>
-                        <div className="input-group mb-3">
-                            <span className="input-group-text" id="basic-addon1">Room Number</span>
-                            <input type="text" className="form-control" name="room_number" value={formik.values.room_number} onChange={formik.handleChange} placeholder="Room Number" aria-label="Room Number" aria-describedby="basic-addon1"/>
-                        </div>
-                        <div className="input-group mb-3">
-                            <span className="input-group-text" id="basic-addon1">Preferences</span>
-                            <input type="text" className="form-control" name="preference" value={formik.values.preference} onChange={formik.handleChange} placeholder="Preferences" aria-label="Preferences" aria-describedby="basic-addon1"/>
-                        </div>
+            <form onSubmit={formik.handleSubmit} className="mb-3">
+                <div className="row mb-3">
+                    <div className="col">
+                            <div className="mb-3 rounded-circle">
+                                <img src={profileUrl} alt="profile url" width={100} height={100}/>
+                            </div>
+                            <div className="input-group mb-3">
+                                <span className="input-group-text" id="basic-addon1">Name</span>
+                                <input type="text" className="form-control" name="guest_name" value={formik.values.guest_name} onChange={formik.handleChange} placeholder="Name" aria-label="Name" aria-describedby="basic-addon1"/>
+                            </div>
+                            <div className="input-group mb-3">
+                                <select className="form-select" aria-label="Default select example" name="membership_id" value={formik.values.membership_id} onChange={formik.handleChange}>
+                                    {membershipOptionComponents}
+                                    <option value='-1'>No Club</option>
+                                </select>
+                            </div>
+                            <div className="input-group mb-3">
+                                <span className="input-group-text" id="basic-addon1">ID Number</span>
+                                <input type="text" className="form-control" name="id_card" value={formik.values.id_card} onChange={formik.handleChange} placeholder="ID" aria-label="ID" aria-describedby="basic-addon1"/>
+                            </div>
+                            <div className="input-group mb-3">
+                                <span className="input-group-text" id="basic-addon1">Room Number</span>
+                                <input type="text" className="form-control" name="room_number" value={formik.values.room_number} onChange={formik.handleChange} placeholder="Room Number" aria-label="Room Number" aria-describedby="basic-addon1"/>
+                            </div>
+                            <div className="input-group mb-3">
+                                <span className="input-group-text" id="basic-addon1">Preferences</span>
+                                <input type="text" className="form-control" name="preference" value={formik.values.preference} onChange={formik.handleChange} placeholder="Preferences" aria-label="Preferences" aria-describedby="basic-addon1"/>
+                            </div>
+                            
+                    </div>
+                    <div className="col">
+                        {formik.values.upload_mode === "webcam" && <UploadDocument handleDocumentUpload={handleDocumentUpload}/>}
+                        {formik.values.upload_mode === "local" && <UploadDocumentLocal profileSet={profileFlag} profilePicture={profileUrl} handleDocumentUpload={handleDocumentUpload}/>}
+                    </div>
+                </div>
+                <div className="row">
+                    <div className="col">
+                    </div>
+                    <div className="col">
+                        <select class="form-select" name="upload_mode" onChange={formik.handleChange} value={formik.values.upload_mode} aria-label="Default select example">
+                            <option selected>Open this select menu</option>
+                            <option value="webcam">Webcam</option>
+                            <option value="local">Local</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div className="mb-3">
+                    <h1 className="display-5">Uploaded Documents</h1>
+                    <div className="d-flex flex-row flex-wrap p-4 border rounded-3 border-1 border-secondary">
+                        {
+                        documents.map( (d,i) => <img src={d} key={i} alt="document" className="p-1 img-fluid rounded rounded-4" width="400"/>) 
                         
-                    </form>
+                        }
+                    </div>
                 </div>
-                <div className="col">
-                    {formik.values.upload_mode === "webcam" && <UploadDocument handleDocumentUpload={handleDocumentUpload}/>}
-                    {formik.values.upload_mode === "local" && <UploadDocumentLocal profileSet={profileFlag} profilePicture={profileUrl} handleDocumentUpload={handleDocumentUpload}/>}
-                </div>
-            </div>
-            <div className="row">
-                <div className="col">
-                </div>
-                <div className="col">
-                    <select class="form-select" name="upload_mode" onChange={formik.handleChange} value={formik.values.upload_mode} aria-label="Default select example">
-                        <option selected>Open this select menu</option>
-                        <option value="webcam">Webcam</option>
-                        <option value="local">Local</option>
-                    </select>
-                </div>
-            </div>
+                <div className="mb-3">
+                    <h1 className="display-5">Face Tranining set</h1>
+                    <div className="d-flex flex-row flex-wrap p-4 border rounded-3 border-1 border-secondary">
+                        {imgComponents}
+                    </div>
 
-            <div className="mb-3">
-                <h1 className="display-5">Uploaded Documents</h1>
-                <div className="d-flex flex-row flex-wrap p-4 border rounded-3 border-1 border-secondary">
-                    {
-                       documents.map( (d,i) => <img src={d} key={i} alt="document" className="p-1 img-fluid rounded rounded-4" width="400"/>) 
-                       
-                    }
+                
                 </div>
-            </div>
-            <div className="mb-3">
-                <h1 className="display-5">Face Tranining set</h1>
-                <div className="d-flex flex-row flex-wrap p-4 border rounded-3 border-1 border-secondary">
-                    {imgComponents}
-                </div>
-
-            
-            </div>
-            <Button type='submit' variant="success">Submit</Button>
+                <Button type='submit' variant="success">Submit</Button>
+            </form>
         </div>
     </div>)
 }
